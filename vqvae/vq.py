@@ -4,7 +4,8 @@ from torch.nn import functional as F
 
 
 class VectorQuantizer(nn.Module):
-    def __init__(self, num_embeddings, embedding_dim, commitment_cost, dim=-1, decay=None, epsilon=1e-5):
+    def __init__(self, num_embeddings, embedding_dim, commitment_cost, dim=-1, decay=None, epsilon=1e-5,
+                 embedding_init_method="uniform"):
         super().__init__()
 
         self._num_embeddings = num_embeddings
@@ -12,9 +13,14 @@ class VectorQuantizer(nn.Module):
         self._commitment_cost = commitment_cost
         self._dim = dim
 
-        init_bound = 1 / self._num_embeddings
         embedding = torch.Tensor(num_embeddings, embedding_dim)
-        embedding.uniform_(-init_bound, init_bound)
+
+        if embedding_init_method == "uniform":
+            init_bound = 1 / self._num_embeddings
+            embedding.uniform_(-init_bound, init_bound)
+        if embedding_init_method == "normal":
+            embedding.normal_(mean=0.0, std=1.0)
+
         self.register_buffer("embedding", embedding)
 
         self._use_ema = (decay is not None) and (decay != 0.0)
@@ -51,8 +57,8 @@ class VectorQuantizer(nn.Module):
                 encodings_one_hot.shape = (B,N,C,H,W)
         """
 
-        assert x.shape[self._dim] == self._embedding_dim, f"Embedding dimension of input, {x.shape[self._dim]}, does " \
-                                                          f"not match embedding_dim, {self._embedding_dim}"
+        self.assert_input(x)
+
         x = torch.moveaxis(x, self._dim, -1).contiguous()
         x_flat = x.detach().view(-1, self._embedding_dim)
         quantized_flat, encodings_indices_flat, encodings_one_hot_flat = self._encode(x_flat)
@@ -95,6 +101,7 @@ class VectorQuantizer(nn.Module):
             x (torch.Tensor): an input tensor with embedding of length `embedding_dim` in axis position `dim`
 
         """
+        self.assert_input(x)
 
         x = torch.moveaxis(x, self._dim, -1).contiguous()  # Move embedding axis to the end and flatten other dimensions
         x_flat = x.detach().view(-1, self._embedding_dim)
@@ -104,7 +111,7 @@ class VectorQuantizer(nn.Module):
 
         if not self._use_ema:
             q_latent_loss = F.mse_loss(quantized, x.detach())
-            loss = q_latent_loss + self._commitment_cost * e_latent_loss
+            vq_loss = q_latent_loss + self._commitment_cost * e_latent_loss
 
         if self._use_ema:
             # Update embeddings using exponential moving averages
@@ -116,8 +123,8 @@ class VectorQuantizer(nn.Module):
                 self._ema_count = (self._ema_count + self._epsilon) / (n + self._embedding_dim * self._epsilon) * n
                 dw = torch.matmul(encodings_one_hot_flat.t(), x_flat)
                 self._ema_weight = self._decay * self._ema_weight + (1 - self._decay) * dw
-                self._embedding = self._ema_weight / self._ema_count.unsqueeze(-1)
-            loss = self._commitment_cost * e_latent_loss
+                self.embedding = self._ema_weight / self._ema_count.unsqueeze(-1)
+            vq_loss = self._commitment_cost * e_latent_loss
 
         quantized = x + (quantized - x).detach()
         avg_probs = torch.mean(encodings_one_hot_flat, dim=0)
@@ -125,4 +132,8 @@ class VectorQuantizer(nn.Module):
 
         # Move embedding axis back to its initial position
         quantized = torch.moveaxis(quantized, -1, self._dim).contiguous()
-        return quantized, loss, perplexity
+        return quantized, vq_loss, perplexity
+
+    def assert_input(self, x):
+        assert x.shape[self._dim] == self._embedding_dim, f"Embedding dimension of input, {x.shape[self._dim]}, does " \
+                                                          f"not match embedding_dim, {self._embedding_dim}"
