@@ -20,20 +20,20 @@ This project uses [Hydra](https://hydra.cc/) to handle hyperparameters. To harne
 
 To train the model with default parameters, simply run
 
-```shell
+```bash
 python train.py
 ```
 
 You can change hyperparameters, either by editing their default values in `configs/config.yaml` or by passing command line arguments. For example:
 
-```shell
+```bash
 python train.py training.num_epochs=10 model.num_embeddings=256
 ```
 
 If you are still unfamiliar with Hydra, consider adding the `debug=True` argument. For example:
 
-```shell
+```bash
 python train.py training.num_epochs=10 model.num_embeddings=256 debug=True
 ```
 
-This will print out the config instead of performing training. You can check if the configuration is as you intended and then remove the debug argument when you are ready to run.
+This will print out the configuration instead of training the model. You can check if the configuration is as you intended and then remove the debug argument when you are ready to train.
