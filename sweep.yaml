@@ -1,0 +1,36 @@
+program: train.py
+method: bayes
+metric:
+  goal: minimize
+  name: validation loss
+parameters:
+  training.learning_rate:
+    max: 0.01
+    min: 0.0025
+    distribution: uniform
+  training.batch_size:
+    values: [512, 1024]
+  model.leaky_relu_negative_slope:
+    max: 0.2
+    min: 0.05
+    distribution: uniform
+  model.commitment_cost:
+    max: 0.3
+    min: 0.2
+    distribution: uniform
+  model.num_embeddings:
+    values: [32, 64, 128]
+  model.embedding_dim:
+    values: [8, 16, 32, 64]
+  model.dropout_p:
+    max: 0.25
+    min: 0.10
+    distribution: uniform
+  model.decay:
+    values: [0.99, 0.999]
+
+command:
+  - ${env}
+  - python
+  - ${program}
+  - ${args_no_hyphens}

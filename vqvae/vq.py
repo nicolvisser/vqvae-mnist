@@ -8,15 +8,15 @@ class VectorQuantizer(nn.Module):
                  embedding_init_method="uniform"):
         super().__init__()
 
-        self._num_embeddings = num_embeddings
-        self._embedding_dim = embedding_dim
-        self._commitment_cost = commitment_cost
+        self.num_embeddings = num_embeddings
+        self.embedding_dim = embedding_dim
+        self.commitment_cost = commitment_cost
         self._dim = dim
 
         embedding = torch.Tensor(num_embeddings, embedding_dim)
 
         if embedding_init_method == "uniform":
-            init_bound = 1 / self._num_embeddings
+            init_bound = 1 / self.num_embeddings
             embedding.uniform_(-init_bound, init_bound)
         if embedding_init_method == "normal":
             embedding.normal_(mean=0.0, std=1.0)
@@ -60,11 +60,11 @@ class VectorQuantizer(nn.Module):
         self.assert_input(x)
 
         x = torch.moveaxis(x, self._dim, -1).contiguous()
-        x_flat = x.detach().view(-1, self._embedding_dim)
+        x_flat = x.detach().view(-1, self.embedding_dim)
         quantized_flat, encodings_indices_flat, encodings_one_hot_flat = self._encode(x_flat)
         quantized = torch.moveaxis(quantized_flat.view_as(x), -1, self._dim).contiguous()
         encodings_indices = torch.moveaxis(encodings_indices_flat.view([*x.shape[:-1], 1]), -1, self._dim).contiguous()
-        encodings_one_hot = torch.moveaxis(encodings_one_hot_flat.view([*x.shape[:-1], self._num_embeddings]), -1,
+        encodings_one_hot = torch.moveaxis(encodings_one_hot_flat.view([*x.shape[:-1], self.num_embeddings]), -1,
                                            self._dim).contiguous()
         return quantized, encodings_indices, encodings_one_hot
 
@@ -91,7 +91,7 @@ class VectorQuantizer(nn.Module):
                                 alpha=-2.0)
         encodings_indices = torch.argmin(distances, dim=1)
         quantized = F.embedding(encodings_indices, self.embedding)
-        encodings_one_hot = F.one_hot(encodings_indices, self._num_embeddings).float()
+        encodings_one_hot = F.one_hot(encodings_indices, self.num_embeddings).float()
         return quantized, encodings_indices, encodings_one_hot
 
     def forward(self, x):
@@ -104,14 +104,14 @@ class VectorQuantizer(nn.Module):
         self.assert_input(x)
 
         x = torch.moveaxis(x, self._dim, -1).contiguous()  # Move embedding axis to the end and flatten other dimensions
-        x_flat = x.detach().view(-1, self._embedding_dim)
+        x_flat = x.detach().view(-1, self.embedding_dim)
         quantized_flat, _, encodings_one_hot_flat = self._encode(x_flat)
         quantized = quantized_flat.view_as(x)
         e_latent_loss = F.mse_loss(quantized.detach(), x)
 
         if not self._use_ema:
             q_latent_loss = F.mse_loss(quantized, x.detach())
-            vq_loss = q_latent_loss + self._commitment_cost * e_latent_loss
+            vq_loss = q_latent_loss + self.commitment_cost * e_latent_loss
 
         if self._use_ema:
             # Update embeddings using exponential moving averages
@@ -120,11 +120,11 @@ class VectorQuantizer(nn.Module):
                                                                                                 dim=0)
                 n = torch.sum(self._ema_count)
                 # Laplace smoothing
-                self._ema_count = (self._ema_count + self._epsilon) / (n + self._embedding_dim * self._epsilon) * n
+                self._ema_count = (self._ema_count + self._epsilon) / (n + self.embedding_dim * self._epsilon) * n
                 dw = torch.matmul(encodings_one_hot_flat.t(), x_flat)
                 self._ema_weight = self._decay * self._ema_weight + (1 - self._decay) * dw
                 self.embedding = self._ema_weight / self._ema_count.unsqueeze(-1)
-            vq_loss = self._commitment_cost * e_latent_loss
+            vq_loss = self.commitment_cost * e_latent_loss
 
         quantized = x + (quantized - x).detach()
         avg_probs = torch.mean(encodings_one_hot_flat, dim=0)
@@ -135,5 +135,5 @@ class VectorQuantizer(nn.Module):
         return quantized, vq_loss, perplexity
 
     def assert_input(self, x):
-        assert x.shape[self._dim] == self._embedding_dim, f"Embedding dimension of input, {x.shape[self._dim]}, does " \
-                                                          f"not match embedding_dim, {self._embedding_dim}"
+        assert x.shape[self._dim] == self.embedding_dim, f"Embedding dimension of input, {x.shape[self._dim]}, does " \
+                                                          f"not match embedding_dim, {self.embedding_dim}"

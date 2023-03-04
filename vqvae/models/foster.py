@@ -3,6 +3,9 @@ from torch import nn
 from torchinfo import summary
 from vqvae.vq import VectorQuantizer
 
+from typing import Callable
+from tqdm import tqdm
+
 
 class Encoder(nn.Module):
     def __init__(self, z_dim, leaky_relu_negative_slope=0.3, dropout_p=0.25):
@@ -68,72 +71,9 @@ class Decoder(nn.Module):
         return summary(self, input_size=input_size, input_data=input_data)
 
 
-class Autoencoder(nn.Module):
-    def __init__(self, z_dim, leaky_relu_negative_slope=0.3, dropout_p=0.25):
-        super().__init__()
-        self.encoder = Encoder(z_dim=z_dim,
-                               leaky_relu_negative_slope=leaky_relu_negative_slope,
-                               dropout_p=dropout_p)
-        self.decoder = Decoder(z_dim=z_dim,
-                               leaky_relu_negative_slope=leaky_relu_negative_slope,
-                               dropout_p=dropout_p)
-
-    def forward(self, x):
-        x = self.encoder(x)
-        x = self.decoder(x)
-        return x
-
-    def summary(self, input_size=None, input_data=None):
-        return summary(self, input_size=input_size, input_data=input_data)
-
-
-class VariationalEncoder(nn.Module):
-    def __init__(self, z_dim, leaky_relu_negative_slope=0.3, dropout_p=0.25):
-        super().__init__()
-        self.z_dim = z_dim
-        self.mu_encoder = Encoder(z_dim=z_dim,
-                                  leaky_relu_negative_slope=leaky_relu_negative_slope,
-                                  dropout_p=dropout_p)
-        self.log_var_encoder = Encoder(z_dim=z_dim,
-                                       leaky_relu_negative_slope=leaky_relu_negative_slope,
-                                       dropout_p=dropout_p)
-
-    def forward(self, x):
-        batch_size = x.shape[0] if x.dim() == 4 else 1
-        mu = self.mu_encoder(x)
-        log_var = self.log_var_encoder(x)
-        z = mu + torch.exp(log_var / 2) * torch.randn_like(mu).to(x.device)
-        kl_loss = -0.5 * torch.sum(1 + log_var - torch.square(mu) - torch.exp(log_var)) / batch_size
-        return z, kl_loss
-
-    def summary(self, input_size=None, input_data=None):
-        return summary(self, input_size=input_size, input_data=input_data)
-
-
-class VariationalAutoencoder(nn.Module):
-    def __init__(self, z_dim, leaky_relu_negative_slope=0.3, dropout_p=0.25):
-        super().__init__()
-        self.z_dim = z_dim
-        self.encoder = VariationalEncoder(z_dim=z_dim,
-                                          leaky_relu_negative_slope=leaky_relu_negative_slope,
-                                          dropout_p=dropout_p)
-        self.decoder = Decoder(z_dim=z_dim,
-                               leaky_relu_negative_slope=leaky_relu_negative_slope,
-                               dropout_p=dropout_p)
-
-    def forward(self, x):
-        z, kl_loss = self.encoder(x)
-        x_hat = self.decoder(z)
-        recon_loss = torch.nn.functional.mse_loss(x, x_hat)
-        return x, recon_loss, kl_loss
-
-    def summary(self, input_size: object = None, input_data: object = None) -> object:
-        return summary(self, input_size=input_size, input_data=input_data)
-
-
 class VectorQuantizedVariationalAutoencoder(nn.Module):
-    def __init__(self, num_embeddings, embedding_dim, commitment_cost=0.25, decay=0.99, leaky_relu_negative_slope=0.3,
-                 dropout_p=0.25):
+    def __init__(self, num_embeddings, embedding_dim, commitment_cost, decay, leaky_relu_negative_slope,
+                 dropout_p):
         super().__init__()
 
         self.encoder = Encoder(z_dim=embedding_dim,
@@ -163,3 +103,48 @@ class VectorQuantizedVariationalAutoencoder(nn.Module):
 
     def summary(self, input_size: object = None, input_data: object = None) -> object:
         return summary(self, input_size=input_size, input_data=input_data)
+
+    def run_training(self, device, optimizer, dataloaders, batch_size, learning_rate, num_epochs,
+                     epoch_callback: Callable[[dict], None] = None,
+                     complete_callback: Callable[[nn.Module], None] = None):
+
+        assert "train" in dataloaders.keys()
+        assert "validation" in dataloaders.keys()
+
+        self.to(device)
+
+        criterion = torch.nn.MSELoss()
+        for epoch in tqdm(range(num_epochs)):
+            logs = {}
+            for phase in ['train', 'validation']:
+                self.train() if phase == 'train' else self.eval()
+                running_vq_loss = 0.0
+                running_recon_loss = 0.0
+                running_loss = 0.0
+                running_perplexity = 0.0
+                for inputs, labels in dataloaders[phase]:
+                    inputs = inputs.to(device)
+                    outputs, vq_loss, perplexity = self.forward(inputs)
+                    perplexity = perplexity
+                    recon_loss = criterion(inputs, outputs)
+                    loss = recon_loss + vq_loss
+                    if phase == 'train':
+                        optimizer.zero_grad()
+                        loss.backward()
+                        optimizer.step()
+                    running_recon_loss += recon_loss.detach() * batch_size
+                    running_vq_loss += vq_loss.detach() * batch_size
+                    running_loss += loss.detach() * batch_size
+                    running_perplexity += perplexity.detach() * batch_size
+                epoch_recon_loss = running_recon_loss / len(dataloaders[phase].dataset)
+                epoch_vq_loss = running_vq_loss / len(dataloaders[phase].dataset)
+                epoch_loss = running_loss / len(dataloaders[phase].dataset)
+                epoch_perplexity = running_perplexity / len(dataloaders[phase].dataset)
+                logs[f"{phase} reconstruction loss"] = epoch_recon_loss.item()
+                logs[f"{phase} vq loss"] = epoch_vq_loss.item()
+                logs[f"{phase} perplexity"] = epoch_perplexity.item() / self.vq.num_embeddings
+                logs[f"{phase} loss"] = epoch_loss.item()
+            if epoch_callback is not None:
+                epoch_callback(epoch, self, optimizer, logs)
+        if complete_callback is not None:
+            complete_callback(epoch, self, optimizer, logs)

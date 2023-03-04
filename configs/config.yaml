@@ -1,0 +1,21 @@
+debug: False
+
+wandb:
+  entity: nicol-representation-learning
+  project: vqvae-mnist
+  name: None
+  log_embeddings: True
+  log_validation_set: True
+
+model:
+  num_embeddings: 128
+  embedding_dim: 8
+  commitment_cost: 0.22
+  decay: 0.99
+  leaky_relu_negative_slope: 0.125
+  dropout_p: 0.18
+
+training:
+  batch_size: 1024
+  learning_rate: 0.003
+  num_epochs: 100
