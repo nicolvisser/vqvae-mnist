@@ -1,5 +1,4 @@
 from torch import nn
-from torchinfo import summary
 
 
 class Encoder(nn.Module):
@@ -25,6 +24,3 @@ class Encoder(nn.Module):
         x = self.leakyReLU(self.dropout(self.batch_norm_3(self.conv2d_3(x))))
         x = self.linear(x.view(-1, 64 * 7 * 7))
         return x
-
-    def summary(self, input_size=None, input_data=None):
-        return summary(self, input_size=input_size, input_data=input_data)

@@ -1,5 +1,4 @@
 from torch import nn
-from torchinfo import summary
 
 
 class Decoder(nn.Module):
@@ -33,6 +32,3 @@ class Decoder(nn.Module):
         x = self.sigmoid(self.convTranspose2d_3(x))
 
         return x
-
-    def summary(self, input_size=None, input_data=None):
-        return summary(self, input_size=input_size, input_data=input_data)
