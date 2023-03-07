@@ -4,30 +4,36 @@ metric:
   goal: minimize
   name: validation loss
 parameters:
-  training.learning_rate:
-    max: 0.01
-    min: 0.0025
-    distribution: uniform
+  wandb.log_embeddings:
+    value: False
+  wandb.log_latent_projections:
+    value: False
   training.batch_size:
-    values: [512, 1024]
-  model.leaky_relu_negative_slope:
-    max: 0.2
-    min: 0.05
+    value: 1024
+  training.num_epochs:
+    value: 10
+  model.optimizer.learning_rate:
+    max: 0.005
+    min: 0.002
     distribution: uniform
-  model.commitment_cost:
-    max: 0.3
-    min: 0.2
+  model.encoder.leaky_relu_negative_slope:
+    max: 0.20
+    min: 0.10
     distribution: uniform
-  model.num_embeddings:
-    values: [32, 64, 128]
-  model.embedding_dim:
-    values: [8, 16, 32, 64]
-  model.dropout_p:
+  model.encoder.dropout_p:
     max: 0.25
     min: 0.10
     distribution: uniform
-  model.decay:
-    values: [0.99, 0.999]
+  model.vq.embedding_dim:
+    values: [ 4, 8, 16 ]
+  model.vq.num_embeddings:
+    values: [128, 256, 512]
+  model.vq.commitment_cost:
+    max: 0.25
+    min: 0.20
+    distribution: uniform
+  model.vq.decay:
+    values: [0.95, 0.99, 0.999]
 
 command:
   - ${env}

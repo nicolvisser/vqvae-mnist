@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from torch.nn import functional as F
+from torch.nn import functional as f
 
 
 class VectorQuantizer(nn.Module):
@@ -90,8 +90,8 @@ class VectorQuantizer(nn.Module):
                                 beta=1.0,
                                 alpha=-2.0)
         encodings_indices = torch.argmin(distances, dim=1)
-        quantized = F.embedding(encodings_indices, self.embedding)
-        encodings_one_hot = F.one_hot(encodings_indices, self.num_embeddings).float()
+        quantized = f.embedding(encodings_indices, self.embedding)
+        encodings_one_hot = f.one_hot(encodings_indices, self.num_embeddings).float()
         return quantized, encodings_indices, encodings_one_hot
 
     def forward(self, x):
@@ -107,10 +107,10 @@ class VectorQuantizer(nn.Module):
         x_flat = x.detach().view(-1, self.embedding_dim)
         quantized_flat, _, encodings_one_hot_flat = self._encode(x_flat)
         quantized = quantized_flat.view_as(x)
-        e_latent_loss = F.mse_loss(quantized.detach(), x)
+        e_latent_loss = f.mse_loss(quantized.detach(), x)
 
         if not self._use_ema:
-            q_latent_loss = F.mse_loss(quantized, x.detach())
+            q_latent_loss = f.mse_loss(quantized, x.detach())
             vq_loss = q_latent_loss + self.commitment_cost * e_latent_loss
 
         if self._use_ema:
@@ -136,4 +136,4 @@ class VectorQuantizer(nn.Module):
 
     def assert_input(self, x):
         assert x.shape[self._dim] == self.embedding_dim, f"Embedding dimension of input, {x.shape[self._dim]}, does " \
-                                                          f"not match embedding_dim, {self.embedding_dim}"
+                                                         f"not match embedding_dim, {self.embedding_dim}"
